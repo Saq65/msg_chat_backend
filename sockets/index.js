@@ -3,6 +3,8 @@ const Message = require('../models/Message');
 const Chat = require('../models/Chat');
 const Client = require('../models/Client');
 const Sir = require('../models/Sir');
+const fs = require('fs');
+const path = require('path');
 
 // Track online users: { userId: socketId }
 const onlineUsers = new Map();
@@ -12,6 +14,14 @@ const getOrCreateChat = async (clientId) => {
   if (!chat) chat = await Chat.create({ clientId });
   return chat;
 };
+
+
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('✅ Uploads folder created');
+}
+
 
 module.exports = (io) => {
   // ─── Middleware: Har connection pe token verify karo ─────────────────────────
@@ -66,95 +76,167 @@ module.exports = (io) => {
     // SEND MESSAGE (Text ya File URL)
     // Frontend se: socket.emit('sendMessage', { clientId, message, fileUrl, fileName, fileType, fileSize })
     // ═══════════════════════════════════════════════════════════════════════════
+    // socket.on('sendMessage', async (data) => {
+    //   try {
+    //     const { clientId, message, fileUrl, fileName, fileType, fileSize } = data;
+
+    //     if (!clientId) return;
+    //     if (!isSir && socket.userId !== clientId) {
+    //       return socket.emit('messageError', { message: 'Unauthorized' });
+    //     }
+
+    //     const isSir = userRole === 'owner';
+    //     const chat = await getOrCreateChat(clientId);
+
+    //     // Message DB mein save karo
+    //     const newMsg = await Message.create({
+    //       chatId: chat._id,
+    //       senderId: isSir ? userId : userId,
+    //       senderType: isSir ? 'sir' : 'client',
+    //       message: message || '',
+    //       fileUrl: fileUrl || '',
+    //       fileName: fileName || '',
+    //       fileSize: fileSize || 0,
+    //       fileType: fileType || 'text',
+    //     });
+
+    //     // Chat ka last message update karo
+    //     const preview = fileUrl ? `📎 ${fileName || 'File'}` : message;
+    //     chat.lastMessage = preview;
+    //     chat.lastMessageTime = new Date();
+    //     chat.lastMessageType = fileType || 'text';
+
+    //     if (isSir) {
+    //       chat.unreadByClient += 1;
+    //     } else {
+    //       chat.unreadBySir += 1;
+    //     }
+    //     await chat.save();
+
+    //     // Message response object
+    //     const msgPayload = {
+    //       _id: newMsg._id,
+    //       chatId: chat._id,
+    //       senderId: userId,
+    //       senderType: isSir ? 'sir' : 'client',
+    //       message: message || '',
+    //       fileUrl: fileUrl || '',
+    //       fileName: fileName || '',
+    //       fileSize: fileSize || 0,
+    //       fileType: fileType || 'text',
+    //       isRead: false,
+    //       createdAt: newMsg.createdAt,
+    //     };
+
+    //     // ── Sir ne message bheja → Client ko deliver karo ─────────────────────
+    //     if (isSir) {
+    //       // Client ke room mein bhejo
+    //       io.to(clientId).emit('newMessage', msgPayload);
+    //       // Sir ko bhi confirm karo (apne screen pe bhi dikhega)
+    //       socket.emit('messageSent', msgPayload);
+
+    //       // Sir ke dashboard mein unread badge update
+    //       socket.emit('chatUpdated', {
+    //         clientId,
+    //         lastMessage: preview,
+    //         lastMessageTime: chat.lastMessageTime,
+    //         unreadBySir: chat.unreadBySir,
+    //       });
+    //     }
+
+    //     // ── Client ne message bheja → Sir ko deliver karo ─────────────────────
+    //     else {
+    //       // Sir ke room mein bhejo
+    //       io.to('sir_room').emit('newMessage', msgPayload);
+    //       // Client ko confirm karo
+    //       socket.emit('messageSent', msgPayload);
+
+    //       // Sir ke dashboard mein unread badge
+    //       io.to('sir_room').emit('chatUpdated', {
+    //         clientId: userId,
+    //         lastMessage: preview,
+    //         lastMessageTime: chat.lastMessageTime,
+    //         unreadBySir: chat.unreadBySir,
+    //       });
+    //     }
+
+    //   } catch (error) {
+    //     console.error('sendMessage error:', error.message);
+    //     socket.emit('messageError', { message: 'Message send nahi hua.' });
+    //   }
+    // });
+
     socket.on('sendMessage', async (data) => {
-      try {
-        const { clientId, message, fileUrl, fileName, fileType, fileSize } = data;
+  try {
+    const { clientId, message, fileUrl, fileName, fileType, fileSize } = data;
+    if (!clientId) return;
 
-        if (!clientId) return;
-        if (!isSir && socket.userId !== clientId) {
-          return socket.emit('messageError', { message: 'Unauthorized' });
-        }
+    const isSir = userRole === 'owner'; // ✅ pehle define karo
 
-        const isSir = userRole === 'owner';
-        const chat = await getOrCreateChat(clientId);
+    // ✅ Security check baad mein
+    if (!isSir && socket.userId !== clientId) {
+      return socket.emit('messageError', { message: 'Unauthorized' });
+    }
 
-        // Message DB mein save karo
-        const newMsg = await Message.create({
-          chatId: chat._id,
-          senderId: isSir ? userId : userId,
-          senderType: isSir ? 'sir' : 'client',
-          message: message || '',
-          fileUrl: fileUrl || '',
-          fileName: fileName || '',
-          fileSize: fileSize || 0,
-          fileType: fileType || 'text',
-        });
+    const chat = await getOrCreateChat(clientId);
 
-        // Chat ka last message update karo
-        const preview = fileUrl ? `📎 ${fileName || 'File'}` : message;
-        chat.lastMessage = preview;
-        chat.lastMessageTime = new Date();
-        chat.lastMessageType = fileType || 'text';
-
-        if (isSir) {
-          chat.unreadByClient += 1;
-        } else {
-          chat.unreadBySir += 1;
-        }
-        await chat.save();
-
-        // Message response object
-        const msgPayload = {
-          _id: newMsg._id,
-          chatId: chat._id,
-          senderId: userId,
-          senderType: isSir ? 'sir' : 'client',
-          message: message || '',
-          fileUrl: fileUrl || '',
-          fileName: fileName || '',
-          fileSize: fileSize || 0,
-          fileType: fileType || 'text',
-          isRead: false,
-          createdAt: newMsg.createdAt,
-        };
-
-        // ── Sir ne message bheja → Client ko deliver karo ─────────────────────
-        if (isSir) {
-          // Client ke room mein bhejo
-          io.to(clientId).emit('newMessage', msgPayload);
-          // Sir ko bhi confirm karo (apne screen pe bhi dikhega)
-          socket.emit('messageSent', msgPayload);
-
-          // Sir ke dashboard mein unread badge update
-          socket.emit('chatUpdated', {
-            clientId,
-            lastMessage: preview,
-            lastMessageTime: chat.lastMessageTime,
-            unreadBySir: chat.unreadBySir,
-          });
-        }
-
-        // ── Client ne message bheja → Sir ko deliver karo ─────────────────────
-        else {
-          // Sir ke room mein bhejo
-          io.to('sir_room').emit('newMessage', msgPayload);
-          // Client ko confirm karo
-          socket.emit('messageSent', msgPayload);
-
-          // Sir ke dashboard mein unread badge
-          io.to('sir_room').emit('chatUpdated', {
-            clientId: userId,
-            lastMessage: preview,
-            lastMessageTime: chat.lastMessageTime,
-            unreadBySir: chat.unreadBySir,
-          });
-        }
-
-      } catch (error) {
-        console.error('sendMessage error:', error.message);
-        socket.emit('messageError', { message: 'Message send nahi hua.' });
-      }
+    const newMsg = await Message.create({
+      chatId: chat._id,
+      senderId: userId,
+      senderType: isSir ? 'sir' : 'client',
+      message: message || '',
+      fileUrl: fileUrl || '',
+      fileName: fileName || '',
+      fileSize: fileSize || 0,
+      fileType: fileType || 'text',
     });
+
+    const preview = fileUrl ? `📎 ${fileName || 'File'}` : message;
+    chat.lastMessage = preview;
+    chat.lastMessageTime = new Date();
+    chat.lastMessageType = fileType || 'text';
+    if (isSir) chat.unreadByClient += 1;
+    else chat.unreadBySir += 1;
+    await chat.save();
+
+    const msgPayload = {
+      _id: newMsg._id,
+      chatId: chat._id,
+      senderId: userId,
+      senderType: isSir ? 'sir' : 'client',
+      message: message || '',
+      fileUrl: fileUrl || '',
+      fileName: fileName || '',
+      fileSize: fileSize || 0,
+      fileType: fileType || 'text',
+      isRead: false,
+      createdAt: newMsg.createdAt,
+    };
+
+    if (isSir) {
+      io.to(clientId).emit('newMessage', msgPayload);
+      socket.emit('messageSent', msgPayload);
+      socket.emit('chatUpdated', {
+        clientId,
+        lastMessage: preview,
+        lastMessageTime: chat.lastMessageTime,
+        unreadBySir: chat.unreadBySir,
+      });
+    } else {
+      io.to('sir_room').emit('newMessage', msgPayload);
+      socket.emit('messageSent', msgPayload);
+      io.to('sir_room').emit('chatUpdated', {
+        clientId: userId,
+        lastMessage: preview,
+        lastMessageTime: chat.lastMessageTime,
+        unreadBySir: chat.unreadBySir,
+      });
+    }
+  } catch (error) {
+    console.error('sendMessage error:', error.message);
+    socket.emit('messageError', { message: 'Message send nahi hua.' });
+  }
+});
 
     // ═══════════════════════════════════════════════════════════════════════════
     // TYPING INDICATOR

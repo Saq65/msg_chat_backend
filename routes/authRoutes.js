@@ -5,11 +5,11 @@ const {
   loginClient,
   registerSir,
   loginSir,
-  getMe,
+  getMe,  
 } = require('../controller/authController');
 const { protect } = require('../middleware/authMiddleware');
 
-// Client routes
+// Client routesz
 router.post('/client/register', registerClient);
 router.post('/client/login', loginClient);
 
